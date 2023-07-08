@@ -270,8 +270,12 @@ fn uwuify_message(message: String) -> String {
     message = message.replace("l", "w");
     message = message.replace("R", "W");
     message = message.replace("L", "W");
-    message = message.replace("n", "ny");
-    message = message.replace("N", "NY");
+    message = message.replace("na", "nya");
+    message = message.replace("Na", "Nya");
+    message = message.replace("nu", "nyu");
+    message = message.replace("Nu", "Nyu");
+    message = message.replace("no", "nyo");
+    message = message.replace("No", "Nyo");
     message = message.replace("ove", "uv");
     message = message.replace("OVE", "UV");
     return message;
