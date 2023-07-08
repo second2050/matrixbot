@@ -1,4 +1,4 @@
-use std::{ops::Deref};
+use std::{ops::Deref, collections::VecDeque};
 
 use anyhow::Ok;
 use matrix_sdk::{
@@ -42,8 +42,9 @@ async fn start_connection() -> anyhow::Result<()> {
         .initial_device_display_name(DEVICE_DISPLAY_NAME)
         .await?;
 
-    // set display name to `DEVICE_DISPLAY_NAME`
-    client.account().set_display_name(Some(DEVICE_DISPLAY_NAME)).await?;
+    // output information about our account
+    println!("Account Info:");
+    println!("-> Display Name: {}", client.account().get_display_name().await.unwrap().unwrap());
 
     // react to invites that are sent to us, these sent us stripped member
     // state events so we should react to them specifically
@@ -121,9 +122,9 @@ async fn on_room_message(
         return;
     }
 
-    //let content_splitted: Vec<&str> = content.body.deref().split(" ").collect();
+    let content_splitted: Vec<&str> = content.body.deref().split(" ").collect();
 
-    match content.body.deref() { // `.deref()` is needed because we are matching a `String` and not a `&str`
+    match content_splitted.first().unwrap().deref() { // `.deref()` is needed because we are matching a `&&str` and not a `&str`
         "¡ping" => {
             println!("Responding to ¡ping in room {}", room.room_id());
             let content = RoomMessageEventContent::text_plain("おはようーー！");
@@ -152,6 +153,14 @@ async fn on_room_message(
                 room.send(content, None).await.unwrap();
             }
         },
+        "!set" => {
+            if event.sender != "@second2050:fachschaften.org" {
+                println!("Denying response to !set for {}", event.sender)
+            } else {
+                println!("Responding to !set in room {}", room.room_id());
+                bot_set_helper(&room, client, content_splitted).await;
+            }
+        }
         // "!echolast" => {
         //     let last_message = get_last_message_from_sender(&room, &event.sender).await;
         //     println!("Responding to !echolast in room {} with '{}'", room.room_id(), last_message);
@@ -173,15 +182,6 @@ async fn on_room_message(
                     room.send(content, None).await.unwrap();
                 }
             }
-            // if content.body.starts_with("!set") {
-            //     if event.sender != "@second2050:fachschaften.org" {
-            //         println!("Denying response to !set for {}", event.sender)
-
-            //     } else {
-            //         println!("Responding to !set in room {}", room.room_id());
-            //         bot_set_helper(&room, content.body);
-            //     }
-            // }
         }
     }
 }
@@ -277,6 +277,29 @@ fn uwuify_message(message: String) -> String {
     return message;
 }
 
-// async fn bot_set_helper(room: &Joined, command: String) {
+async fn bot_set_helper(room: &Joined, client: Client, command: Vec<&str>) {
+    // convert to VecDeque and pop first element from command
+    let mut command: VecDeque<&str> = command.into();
+    command.pop_front();
 
-// }
+    // match subcommand
+    match command.pop_front().unwrap().deref() {
+        "name" => {
+            let mut new_name: String = "".to_string();
+            for string in command {
+                new_name += string;
+                new_name += " ";
+            }
+            println!("set_name: setting display name -> {}", new_name);
+            let result = client.account().set_display_name(Some(new_name.as_str())).await;
+            if result.is_err() {
+                println!("set_name: failed to set display name");
+                let content = RoomMessageEventContent::text_plain("Failed to set display name!");
+                room.send(content, None).await.unwrap();
+            }
+        }
+        _ => {
+            println!("set: unrecognized set command encountered");
+        }
+    }
+}
