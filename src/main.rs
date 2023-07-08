@@ -1,4 +1,4 @@
-use std::{ops::Deref, collections::VecDeque};
+use std::{ops::Deref};
 
 use anyhow::Ok;
 use matrix_sdk::{
@@ -278,18 +278,12 @@ fn uwuify_message(message: String) -> String {
 }
 
 async fn bot_set_helper(room: &Joined, client: Client, command: Vec<&str>) {
-    // convert to VecDeque and pop first element from command
-    let mut command: VecDeque<&str> = command.into();
-    command.pop_front();
-
+    println!("executing set command '{}'", command.join(" "));
     // match subcommand
-    match command.pop_front().unwrap().deref() {
-        "name" => {
-            let mut new_name: String = "".to_string();
-            for string in command {
-                new_name += string;
-                new_name += " ";
-            }
+    match command[..] {
+        ["!set", "name", ref rest@..] => {
+            let new_name: String = rest.join(" ");
+
             println!("set_name: setting display name -> {}", new_name);
             let result = client.account().set_display_name(Some(new_name.as_str())).await;
             if result.is_err() {
