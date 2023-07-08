@@ -1,6 +1,7 @@
-use std::{ops::Deref};
+use std::{ops::Deref, process::exit};
 
 use anyhow::Ok;
+use configparser::ini::Ini;
 use matrix_sdk::{
     config::SyncSettings,
     room::Room,
@@ -13,33 +14,55 @@ use matrix_sdk::{
 };
 use tokio::time::{sleep, Duration};
 
-const HOMESERVER_URL: &str = "https://matrix.example.tld";
-const USERNAME: &str = "@bot:example.tld";
-const PASSWORD: &str = "password";
-const DEVICE_DISPLAY_NAME: &str = "Bot";
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // setup stderr logging, configurable via the `RUST_LOG` env variable
     tracing_subscriber::fmt::init();
 
+    // load connection details from config file
+    let mut config = Ini::new();
+    if config.load("config.ini").is_err() {
+        println!("ERROR: Failed to load config file, creating a new one");
+        config.set("Connection", "HOMESERVER_URL", Some("https://matrix.example.tld".to_string()));
+        config.set("Connection", "USERNAME", Some("@bot:matrix.example.tld".to_string()));
+        config.set("Connection", "PASSWORD", Some("password".to_string()));
+        config.set("Connection", "DEVICE_DISPLAY_NAME", Some("Bot".to_string()));
+        if config.write("config.ini").is_err() {
+            println!("ERROR: Failed to write config file");
+            exit(2);
+        } else {
+            println!("INFO: Config file created, please edit it and restart the bot");
+            exit(1);
+        }
+    }
+
     // start our connection
-    start_connection().await?;
+    start_connection(
+        config.get("Connection", "HOMESERVER_URL").unwrap().as_str(),
+        config.get("Connection", "USERNAME").unwrap().as_str(),
+        config.get("Connection", "PASSWORD").unwrap().as_str(),
+        config.get("Connection", "DEVICE_DISPLAY_NAME").unwrap().as_str(),
+    ).await?;
     Ok(())
 }
 
 // main loop
-async fn start_connection() -> anyhow::Result<()> {
+async fn start_connection(
+    homeserver_url: &str,
+    username: &str,
+    password: &str,
+    device_display_name: &str,
+) -> anyhow::Result<()> {
     // setup our client connection
     let client = Client::builder()
-        .homeserver_url(HOMESERVER_URL)
+        .homeserver_url(homeserver_url)
         .build()
         .await?;
 
     // authenticate to our server
     client.matrix_auth()
-        .login_username(USERNAME, PASSWORD)
-        .initial_device_display_name(DEVICE_DISPLAY_NAME)
+        .login_username(username, password)
+        .initial_device_display_name(device_display_name)
         .await?;
 
     // output information about our account
