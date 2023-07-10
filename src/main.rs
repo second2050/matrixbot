@@ -9,12 +9,15 @@ use matrix_sdk::{
     ruma::{events::{room::{
         member::StrippedRoomMemberEvent,
         message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent, RoomMessageEvent},
-    }, TimelineEventType}, UserId, UInt, MxcUri},
+    }, TimelineEventType}, UserId, UInt},
     Client,
 };
 use tokio::time::{sleep, Duration};
+use tokio::sync::OnceCell;
 use url::Url;
 use mime::Mime;
+
+static CONFIG: OnceCell<Ini> = OnceCell::const_new(); // global config object
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -37,8 +40,10 @@ async fn main() -> anyhow::Result<()> {
             exit(1);
         }
     }
-
+    CONFIG.set(config).unwrap();
+    
     // start our connection
+    let config = CONFIG.get().unwrap();
     start_connection(
         config.get("Connection", "HOMESERVER_URL").unwrap().as_str(),
         config.get("Connection", "USERNAME").unwrap().as_str(),
@@ -70,6 +75,9 @@ async fn start_connection(
     // output information about our account
     println!("Account Info:");
     println!("-> Display Name: {}", client.account().get_display_name().await.unwrap().unwrap());
+    println!("-> User ID: {}", client.user_id().unwrap());
+    println!("-> Device ID: {}", client.device_id().unwrap());
+    println!("-> Admin ID: {}", CONFIG.get().unwrap().get("Admin", "ADMIN_USER_ID").unwrap());
 
     // react to invites that are sent to us, these sent us stripped member
     // state events so we should react to them specifically
@@ -179,8 +187,8 @@ async fn on_room_message(
             }
         },
         "!set" => {
-            if event.sender != "@second2050:fachschaften.org" {
-                println!("Denying response to !set for {}", event.sender)
+            if event.sender != CONFIG.get().unwrap().get("Admin", "admin_user_id").unwrap() {
+                println!("Denying response to !set for {}", event.sender);
                 let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
                 room.send(content, None).await.unwrap();
             } else {
@@ -293,10 +301,10 @@ async fn get_last_message(room: &Joined) -> Option<String> {
 
 fn uwuify_message(message: String) -> String {
     let mut message = message;
-    message = message.replace("r", "w");
-    message = message.replace("l", "w");
-    message = message.replace("R", "W");
-    message = message.replace("L", "W");
+    message = message.replace('r', "w");
+    message = message.replace('l', "w");
+    message = message.replace('R', "W");
+    message = message.replace('L', "W");
     message = message.replace("na", "nya");
     message = message.replace("Na", "Nya");
     message = message.replace("nu", "nyu");
@@ -339,7 +347,7 @@ async fn bot_set_helper(room: &Joined, client: Client, command: Vec<&str>) {
             }
 
             // set avatar from parsed url
-            println!("set_avatar: setting avatar -> {}", avatar_url);
+            println!("set_avatar: setting avatar");
             let result = client.account().upload_avatar(&mime_type, avatar_bytes).await;
             if result.is_err() {
                 println!("set_avatar: failed to set avatar");
