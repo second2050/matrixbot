@@ -9,6 +9,9 @@ edition = "2021"
 anyhow = "1.0.71"
 configparser = "3.0.2"
 matrix-sdk = { git = "https://github.com/matrix-org/matrix-rust-sdk.git", package = "matrix-sdk" }
+mime = "0.3.17"
+reqwest = "0.11.18"
 #rust-sdk = "0.0.0"
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = "0.3.17"
+url = "2.4.0"

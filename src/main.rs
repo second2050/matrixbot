@@ -1,4 +1,4 @@
-use std::{ops::Deref, process::exit};
+use std::{ops::Deref, process::exit, str::FromStr};
 
 use anyhow::Ok;
 use configparser::ini::Ini;
@@ -9,10 +9,12 @@ use matrix_sdk::{
     ruma::{events::{room::{
         member::StrippedRoomMemberEvent,
         message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent, RoomMessageEvent},
-    }, TimelineEventType}, UserId, UInt},
+    }, TimelineEventType}, UserId, UInt, MxcUri},
     Client,
 };
 use tokio::time::{sleep, Duration};
+use url::Url;
+use mime::Mime;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -179,6 +181,8 @@ async fn on_room_message(
         "!set" => {
             if event.sender != "@second2050:fachschaften.org" {
                 println!("Denying response to !set for {}", event.sender)
+                let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
+                room.send(content, None).await.unwrap();
             } else {
                 println!("Responding to !set in room {}", room.room_id());
                 bot_set_helper(&room, client, content_splitted).await;
@@ -309,6 +313,7 @@ async fn bot_set_helper(room: &Joined, client: Client, command: Vec<&str>) {
     // match subcommand
     match command[..] {
         ["!set", "name", ref rest@..] => {
+            // get new name from rest of command
             let new_name: String = rest.join(" ");
 
             println!("set_name: setting display name -> {}", new_name);
@@ -316,6 +321,29 @@ async fn bot_set_helper(room: &Joined, client: Client, command: Vec<&str>) {
             if result.is_err() {
                 println!("set_name: failed to set display name");
                 let content = RoomMessageEventContent::text_plain("Failed to set display name!");
+                room.send(content, None).await.unwrap();
+            }
+        }
+        ["!set", "avatar", ref rest@..] => {
+            // get avatar from url
+            let avatar_url = rest.join(" ");
+            let avatar_url = Url::parse(avatar_url.as_str()).unwrap();
+
+            // download avatar from url to Vec<u8>
+            println!("set_avatar: downloading avatar -> {}", avatar_url);
+            let mut response = reqwest::get(avatar_url.clone()).await.unwrap();
+            let mime_type = Mime::from_str(response.headers().get("content-type").unwrap().to_str().unwrap()).unwrap();
+            let mut avatar_bytes = Vec::new();
+            while let Some(chunk) = response.chunk().await.unwrap() {
+                avatar_bytes.extend_from_slice(&chunk);
+            }
+
+            // set avatar from parsed url
+            println!("set_avatar: setting avatar -> {}", avatar_url);
+            let result = client.account().upload_avatar(&mime_type, avatar_bytes).await;
+            if result.is_err() {
+                println!("set_avatar: failed to set avatar");
+                let content = RoomMessageEventContent::text_plain("Failed to set avatar!");
                 room.send(content, None).await.unwrap();
             }
         }

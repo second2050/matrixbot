@@ -1560,8 +1560,11 @@ dependencies = [
  "anyhow",
  "configparser",
  "matrix-sdk",
+ "mime",
+ "reqwest",
  "tokio",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
