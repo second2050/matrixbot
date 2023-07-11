@@ -294,6 +294,28 @@ async fn on_room_message(
                 room.send(content, None).await.unwrap();
             }
         },
+        "!send_msg" => {
+            if admin_checker(&room, event.sender, &config).await {
+                println!("Responding to !send_msg in room {}", room.room_id());
+                let mut message = String::new();
+                for word in content_splitted.iter().skip(2) {
+                    message.push_str(word);
+                    message.push_str(" ");
+                }
+                let content = RoomMessageEventContent::text_plain(&message);
+                
+                // check if room is joined and send message if found correct room
+                for room in client.joined_rooms() {
+                    if room.room_id() == content_splitted[1] {
+                        println!("Sending message: '{}' to room {}", message, content_splitted[1]);
+                        room.send(content, None).await.unwrap();
+                        return;
+                    }
+                }
+                let error = RoomMessageEventContent::text_plain("Room not joined");
+                room.send(error, None).await.unwrap();
+            }
+        },
         // special cases and catch all
         _ => {
             // special case for sed fix command
