@@ -9,7 +9,7 @@ use matrix_sdk::{
     ruma::{events::{room::{
         member::StrippedRoomMemberEvent,
         message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent, RoomMessageEvent},
-    }, TimelineEventType}, UserId, UInt},
+    }, TimelineEventType}, UserId, UInt, OwnedUserId},
     Client, event_handler::Ctx, AuthSession,
 };
 use tokio::time::{sleep, Duration};
@@ -222,6 +222,7 @@ async fn on_room_message(
     let content_splitted: Vec<&str> = content.body.deref().split(" ").collect();
 
     match content_splitted.first().unwrap().deref() { // `.deref()` is needed because we are matching a `&&str` and not a `&str`
+        // standard commands
         "¡ping" => {
             println!("Responding to ¡ping in room {}", room.room_id());
             let content = RoomMessageEventContent::text_plain("おはようーー！");
@@ -250,22 +251,15 @@ async fn on_room_message(
                 room.send(content, None).await.unwrap();
             }
         },
+        // admin commands
         "!set" => {
-            if event.sender != config.get("Admin", "admin_user_id").unwrap() {
-                println!("Denying response to !set for {}", event.sender);
-                let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
-                room.send(content, None).await.unwrap();
-            } else {
+            if admin_checker(&room, event.sender, &config).await {
                 println!("Responding to !set in room {}", room.room_id());
                 bot_set_helper(&room, client, content_splitted).await;
             }
         },
         "!stop" => {
-            if event.sender != config.get("Admin", "admin_user_id").unwrap() {
-                println!("Denying response to !stop for {}", event.sender);
-                let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
-                room.send(content, None).await.unwrap();
-            } else {
+            if admin_checker(&room, event.sender, &config).await {
                 println!("Responding to !stop in room {}", room.room_id());
                 let content = RoomMessageEventContent::text_plain("おやすみ...");
                 room.send(content, None).await.unwrap();
@@ -279,11 +273,7 @@ async fn on_room_message(
             room.send(content, None).await.unwrap();
         },
         "!leave" => {
-            if event.sender != config.get("Admin", "admin_user_id").unwrap() {
-                println!("Denying response to !leave for {}", event.sender);
-                let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
-                room.send(content, None).await.unwrap();
-            } else {
+            if admin_checker(&room, event.sender, &config).await {
                 println!("Responding to !leave in room {}", room.room_id());
                 let content = RoomMessageEventContent::text_plain("バイバイーー！");
                 room.send(content, None).await.unwrap();
@@ -291,11 +281,7 @@ async fn on_room_message(
             }
         },
         "!list_rooms" => {
-            if event.sender != config.get("Admin", "admin_user_id").unwrap() {
-                println!("Denying response to !list_rooms for {}", event.sender);
-                let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
-                room.send(content, None).await.unwrap();
-            } else {
+            if admin_checker(&room, event.sender, &config).await {
                 println!("Responding to !list_rooms in room {}", room.room_id());
                 // get a string of all joined rooms
                 let mut joined_rooms = String::new();
@@ -308,13 +294,7 @@ async fn on_room_message(
                 room.send(content, None).await.unwrap();
             }
         },
-        // "!echolast" => {
-        //     let last_message = get_last_message_from_sender(&room, &event.sender).await;
-        //     println!("Responding to !echolast in room {} with '{}'", room.room_id(), last_message);
-        //     println!("Current Room: {}", room.room_id());
-        //     let content = RoomMessageEventContent::text_plain(last_message);
-        //     room.send(content, None).await.unwrap();
-        // },
+        // special cases and catch all
         _ => {
             // special case for sed fix command
             if content.body.starts_with("s/") {
@@ -330,6 +310,17 @@ async fn on_room_message(
                 }
             }
         }
+    }
+}
+
+async fn admin_checker(room: &Joined, sender: OwnedUserId, config: &Ctx<Ini>) -> bool {
+    if sender != config.get("Admin", "admin_user_id").unwrap() {
+        println!("Denying response to admin command for {}", sender);
+        let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
+        room.send(content, None).await.unwrap();
+        return false
+    } else {
+        return true
     }
 }
 
