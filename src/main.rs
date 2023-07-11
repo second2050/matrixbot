@@ -402,6 +402,15 @@ async fn bot_set_helper(room: &Joined, client: Client, command: Vec<&str>) {
             // download avatar from url to Vec<u8>
             println!("set_avatar: downloading avatar -> {}", avatar_url);
             let mut response = reqwest::get(avatar_url.clone()).await.unwrap();
+
+            // check if download was successful
+            if response.status() != reqwest::StatusCode::OK {
+                println!("set_avatar: failed to download avatar -> {}", response.status());
+                let content = RoomMessageEventContent::text_plain("Failed to download avatar!");
+                room.send(content, None).await.unwrap();
+                return;
+            }
+
             let mime_type = Mime::from_str(response.headers().get("content-type").unwrap().to_str().unwrap()).unwrap();
             let mut avatar_bytes = Vec::new();
             while let Some(chunk) = response.chunk().await.unwrap() {
