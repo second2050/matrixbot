@@ -290,6 +290,24 @@ async fn on_room_message(
                 leave_room(content_splitted[1].to_string(), &client).await;
             }
         },
+        "!list_rooms" => {
+            if event.sender != config.get("Admin", "admin_user_id").unwrap() {
+                println!("Denying response to !list_rooms for {}", event.sender);
+                let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
+                room.send(content, None).await.unwrap();
+            } else {
+                println!("Responding to !list_rooms in room {}", room.room_id());
+                // get a string of all joined rooms
+                let mut joined_rooms = String::new();
+                joined_rooms.push_str("Joined rooms:<br>");
+                for room in client.joined_rooms() {
+                    joined_rooms.push_str(&format!("<code>{}</code> -> {}<br>", room.room_id(), room.display_name().await.unwrap()));
+                }
+                // send the string
+                let content = RoomMessageEventContent::text_html(&joined_rooms, &joined_rooms);
+                room.send(content, None).await.unwrap();
+            }
+        },
         // "!echolast" => {
         //     let last_message = get_last_message_from_sender(&room, &event.sender).await;
         //     println!("Responding to !echolast in room {} with '{}'", room.room_id(), last_message);
