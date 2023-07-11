@@ -13,7 +13,6 @@ use matrix_sdk::{
     Client, event_handler::Ctx, AuthSession,
 };
 use tokio::time::{sleep, Duration};
-use tokio::sync::OnceCell;
 use url::Url;
 use mime::Mime;
 use serde::{Deserialize, Serialize};
