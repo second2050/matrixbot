@@ -70,6 +70,7 @@ async fn start_connection(config: Ini) -> anyhow::Result<()> {
         // setup our client connection
         client = Client::builder()
             .homeserver_url(&homeserver_url)
+            .sqlite_store("db".to_string(), None)
             .build()
             .await?;
     
@@ -258,7 +259,37 @@ async fn on_room_message(
                 println!("Responding to !set in room {}", room.room_id());
                 bot_set_helper(&room, client, content_splitted).await;
             }
-        }
+        },
+        "!stop" => {
+            if event.sender != config.get("Admin", "admin_user_id").unwrap() {
+                println!("Denying response to !stop for {}", event.sender);
+                let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
+                room.send(content, None).await.unwrap();
+            } else {
+                println!("Responding to !stop in room {}", room.room_id());
+                let content = RoomMessageEventContent::text_plain("おやすみ...");
+                room.send(content, None).await.unwrap();
+                store_session(&client).await; // save session before exiting
+                exit(0);
+            }
+        },
+        "!get_room_name" => {
+            println!("Responding to !get_room_name in room {}", room.room_id());
+            let content = RoomMessageEventContent::text_plain(room.room_id().to_string());
+            room.send(content, None).await.unwrap();
+        },
+        "!leave" => {
+            if event.sender != config.get("Admin", "admin_user_id").unwrap() {
+                println!("Denying response to !leave for {}", event.sender);
+                let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
+                room.send(content, None).await.unwrap();
+            } else {
+                println!("Responding to !leave in room {}", room.room_id());
+                let content = RoomMessageEventContent::text_plain("バイバイーー！");
+                room.send(content, None).await.unwrap();
+                leave_room(content_splitted[1].to_string(), &client).await;
+            }
+        },
         // "!echolast" => {
         //     let last_message = get_last_message_from_sender(&room, &event.sender).await;
         //     println!("Responding to !echolast in room {} with '{}'", room.room_id(), last_message);
@@ -294,6 +325,18 @@ fn fix_message(original_message: String, correction_message: String) -> String {
     println!("fix_message: from '{}' to '{}'", from, to);
     println!("fix_message: '{}' -> '{}'", original_message, message);
     return message
+}
+
+async fn leave_room(room_name: String, client: &Client) {
+    // check if we are in the room
+    let room_list = client.joined_rooms();
+    for room in room_list {
+        if room.room_id().to_string() == room_name {
+            println!("Leaving room {}", room_name);
+            room.leave().await.unwrap();
+            return;
+        }
+    }
 }
 
 async fn get_last_message_from_sender(room: &Joined, user: &UserId) -> Option<String> {
