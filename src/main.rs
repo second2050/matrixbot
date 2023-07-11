@@ -59,10 +59,12 @@ async fn start_connection(config: Ini) -> anyhow::Result<()> {
         .await?;
 
     // authenticate to our server
-    client.matrix_auth()
-        .login_username(username, password.as_str())
-        .initial_device_display_name(device_display_name.as_str())
-        .await?;
+    login_to_homeserver(
+        &client,
+        username.as_str(),
+        password.as_str(),
+        device_display_name.as_str()
+    ).await;
 
     // output information about our account
     println!("Account Info:");
@@ -98,6 +100,19 @@ async fn start_connection(config: Ini) -> anyhow::Result<()> {
     client.sync(sync_settings).await?; // this will loop until we kill this bot
 
     Ok(())
+}
+
+async fn login_to_homeserver(client: &Client, username: &str, password: &str, device_display_name: &str) {
+    if client.matrix_auth()
+        .login_username(username, password)
+        .initial_device_display_name(device_display_name)
+        .await
+        .is_err() {
+            println!("ERROR: Failed to login to homeserver");
+            exit(2);
+        } else {
+            println!("INFO: Logged in to homeserver");
+        }
 }
 
 // event handler for invites
