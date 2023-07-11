@@ -39,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
         config.set("Connection", "USERNAME", Some("@bot:matrix.example.tld".to_string()));
         config.set("Connection", "PASSWORD", Some("password".to_string()));
         config.set("Connection", "DEVICE_DISPLAY_NAME", Some("Bot".to_string()));
+        config.set("Admin", "ADMIN_USER_ID", Some("@admin:matrix.example.tld".to_string()));
         if config.write("config.ini").is_err() {
             println!("ERROR: Failed to write config file");
             exit(2);
