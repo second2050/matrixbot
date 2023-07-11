@@ -10,14 +10,12 @@ use matrix_sdk::{
         member::StrippedRoomMemberEvent,
         message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent, RoomMessageEvent},
     }, TimelineEventType}, UserId, UInt},
-    Client,
+    Client, event_handler::Ctx,
 };
 use tokio::time::{sleep, Duration};
 use tokio::sync::OnceCell;
 use url::Url;
 use mime::Mime;
-
-static CONFIG: OnceCell<Ini> = OnceCell::const_new(); // global config object
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -40,26 +38,20 @@ async fn main() -> anyhow::Result<()> {
             exit(1);
         }
     }
-    CONFIG.set(config).unwrap();
     
     // start our connection
-    let config = CONFIG.get().unwrap();
-    start_connection(
-        config.get("Connection", "HOMESERVER_URL").unwrap().as_str(),
-        config.get("Connection", "USERNAME").unwrap().as_str(),
-        config.get("Connection", "PASSWORD").unwrap().as_str(),
-        config.get("Connection", "DEVICE_DISPLAY_NAME").unwrap().as_str(),
-    ).await?;
+    start_connection(config).await?;
     Ok(())
 }
 
 // main loop
-async fn start_connection(
-    homeserver_url: &str,
-    username: &str,
-    password: &str,
-    device_display_name: &str,
-) -> anyhow::Result<()> {
+async fn start_connection(config: Ini) -> anyhow::Result<()> {
+    // load config
+    let homeserver_url = config.get("Connection", "HOMESERVER_URL").unwrap();
+    let username = config.get("Connection", "USERNAME").unwrap();
+    let password = config.get("Connection", "PASSWORD").unwrap();
+    let device_display_name= config.get("Connection", "DEVICE_DISPLAY_NAME").unwrap();
+
     // setup our client connection
     let client = Client::builder()
         .homeserver_url(homeserver_url)
@@ -68,8 +60,8 @@ async fn start_connection(
 
     // authenticate to our server
     client.matrix_auth()
-        .login_username(username, password)
-        .initial_device_display_name(device_display_name)
+        .login_username(username, password.as_str())
+        .initial_device_display_name(device_display_name.as_str())
         .await?;
 
     // output information about our account
@@ -77,10 +69,11 @@ async fn start_connection(
     println!("-> Display Name: {}", client.account().get_display_name().await.unwrap().unwrap());
     println!("-> User ID: {}", client.user_id().unwrap());
     println!("-> Device ID: {}", client.device_id().unwrap());
-    println!("-> Admin ID: {}", CONFIG.get().unwrap().get("Admin", "ADMIN_USER_ID").unwrap());
+    println!("-> Admin ID: {}", config.get("Admin", "ADMIN_USER_ID").unwrap());
 
     // react to invites that are sent to us, these sent us stripped member
     // state events so we should react to them specifically
+    // this is before our sync loop so we don't miss any invites
     client.add_event_handler(on_stripped_state_member);
 
     // setup state by syncing so we dont respond to old messages, if the
@@ -91,6 +84,10 @@ async fn start_connection(
         .await
         .unwrap()
         .next_batch;
+
+    // add our config to an event handler context so we can access it in our
+    // loop
+    client.add_event_handler_context(config);
 
     // attach incoming message handler
     client.add_event_handler(on_room_message);
@@ -144,7 +141,8 @@ async fn on_stripped_state_member(
 async fn on_room_message(
     event: OriginalSyncRoomMessageEvent,
     client: Client,
-    room: Room
+    room: Room,
+    config: Ctx<Ini>
 ) {
     // act on messages that are only in rooms that we are joined to and unpack them
     let Room::Joined(room) = room else { return };
@@ -187,7 +185,7 @@ async fn on_room_message(
             }
         },
         "!set" => {
-            if event.sender != CONFIG.get().unwrap().get("Admin", "admin_user_id").unwrap() {
+            if event.sender != config.get("Admin", "admin_user_id").unwrap() {
                 println!("Denying response to !set for {}", event.sender);
                 let content = RoomMessageEventContent::text_plain("⛔ You are not allowed to use this command!");
                 room.send(content, None).await.unwrap();
