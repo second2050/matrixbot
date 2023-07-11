@@ -1,2 +1,7 @@
+# cargo
 /target
+
+# config of matrixbot
 config.ini
+session.json
+/db
