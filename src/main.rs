@@ -10,12 +10,22 @@ use matrix_sdk::{
         member::StrippedRoomMemberEvent,
         message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent, RoomMessageEvent},
     }, TimelineEventType}, UserId, UInt},
-    Client, event_handler::Ctx,
+    Client, event_handler::Ctx, AuthSession,
 };
 use tokio::time::{sleep, Duration};
 use tokio::sync::OnceCell;
 use url::Url;
 use mime::Mime;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize)]
+struct FullSession {
+    homeserver_url: String,
+    db_path: String,
+    auth_session: AuthSession,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sync_token: Option<String>,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -52,19 +62,32 @@ async fn start_connection(config: Ini) -> anyhow::Result<()> {
     let password = config.get("Connection", "PASSWORD").unwrap();
     let device_display_name= config.get("Connection", "DEVICE_DISPLAY_NAME").unwrap();
 
-    // setup our client connection
-    let client = Client::builder()
-        .homeserver_url(homeserver_url)
-        .build()
-        .await?;
-
-    // authenticate to our server
-    login_to_homeserver(
-        &client,
-        username.as_str(),
-        password.as_str(),
-        device_display_name.as_str()
-    ).await;
+    // check if a saved session already exists on disk
+    let client: Client;
+    let serialized_session = std::fs::read_to_string("session.json");
+    if serialized_session.is_err() {
+        println!("INFO: No saved session found, logging in...");
+        // setup our client connection
+        client = Client::builder()
+            .homeserver_url(&homeserver_url)
+            .build()
+            .await?;
+    
+        // authenticate to our server
+        login_to_homeserver(
+            &client,
+            username.as_str(),
+            password.as_str(),
+            device_display_name.as_str()
+        ).await;
+        // serialize and save session
+        store_session(&client).await;
+    } else {
+        println!("INFO: Saved session found, restoring...");
+        // deserialize session
+        let deserialized_session: FullSession = serde_json::from_str(&serialized_session.unwrap()).unwrap();
+        client = restore_session(deserialized_session).await;
+    }
 
     // output information about our account
     println!("Account Info:");
@@ -113,6 +136,33 @@ async fn login_to_homeserver(client: &Client, username: &str, password: &str, de
         } else {
             println!("INFO: Logged in to homeserver");
         }
+}
+
+async fn store_session(client: &Client) {
+    // serialize and save session
+    println!("INFO: Saving session...");
+    let session = FullSession {
+        homeserver_url: client.homeserver().await.into(),
+        db_path: "db".to_string(),
+        auth_session: client.session().clone().unwrap(),
+        sync_token: None,
+    };
+    let serialized_session = serde_json::to_string(&session).unwrap();
+    std::fs::write("session.json", serialized_session).unwrap();
+}
+
+async fn restore_session(session: FullSession) -> Client {
+    // build a new client with the saved session
+    let client = Client::builder()
+        .homeserver_url(session.homeserver_url.as_str())
+        .sqlite_store(session.db_path, None)
+        .build()
+        .await
+        .unwrap();
+
+    // restore authentication state
+    client.restore_session(session.auth_session).await.unwrap();
+    return client
 }
 
 // event handler for invites
